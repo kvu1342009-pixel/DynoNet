@@ -296,6 +296,15 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
+## Contact
+
+For questions, suggestions, or collaborations:
+
+- **Email:** [kvu1342009@gmail.com](mailto:kvu1342009@gmail.com)
+- **GitHub:** [@kvu1342009-pixel](https://github.com/kvu1342009-pixel)
+
+---
+
 <div align="center">
 
 **Made with ❤️ for the Time Series community**

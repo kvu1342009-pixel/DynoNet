@@ -131,6 +131,13 @@ The Controller doesn't just modulate architecture — it also controls training:
   <img src="png/paper_efficiency_plot.png" width="70%" alt="Efficiency Plot">
 </p>
 
+### SOTA Comparison
+
+<p align="center">
+  <img src="png/sota_comparison.png" width="48%" alt="SOTA Comparison">
+  <img src="png/sota_comparison_mse_mae.png" width="48%" alt="SOTA MSE MAE">
+</p>
+
 ### Forecast Visualization
 
 <p align="center">

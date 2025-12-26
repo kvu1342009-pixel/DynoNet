@@ -84,19 +84,7 @@ Time Series Forecasting has been dominated by large Transformer models (PatchTST
   <img src="png/architecture_overview.png" width="85%" alt="DynoNet Architecture">
 </p>
 
-DynoNet follows a **Controller-Worker** paradigm:
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│                         DynoNet                               │
-├──────────────────────────────────────────────────────────────┤
-│  Input → RevIN → ┬→ Controller GRU ──→ Modulation Signals    │
-│                  │                            ↓              │
-│                  └→ Decomposition ──→ 7 GRU Workers ←────────┤
-│                                              ↓               │
-│                           Channel Mixer → RevIN⁻¹ → Output   │
-└──────────────────────────────────────────────────────────────┘
-```
+DynoNet follows a **Controller-Worker** paradigm where the Controller dynamically generates modulation signals for lightweight Worker networks.
 
 ### Component Breakdown
 
@@ -165,12 +153,15 @@ The Controller doesn't just modulate architecture — it controls the entire tra
 
 | Rank | Model | MSE ↓ | MAE ↓ | Params | Type |
 |:----:|:------|:-----:|:-----:|-------:|:-----|
-| 🥇 | TSMixer | 0.361 | 0.395 | 500K | MLP |
-| 🥈 | **DynoNet (Ours)** | **0.386** | **0.415** | **94K** | Dynamic RNN |
-| 🥉 | PatchTST | 0.388 | 0.400 | 550K | Transformer |
-| 4 | DLinear | 0.390 | 0.405 | 10K | Linear |
-| 5 | Crossformer | 0.395 | 0.410 | 1M+ | Transformer |
-| 6 | iTransformer | 0.487 | 0.458 | 500K | Transformer |
+| 🥇 | PatchTST | 0.370 | 0.400 | 550K | Transformer |
+| 🥈 | DLinear | 0.375 | 0.399 | 10K | Linear |
+| � | **DynoNet (Ours)** | **0.386** | **0.415** | **94K** | Dynamic RNN |
+| 4 | iTransformer | 0.386 | 0.405 | 500K | Transformer |
+| 5 | Crossformer | 0.423 | 0.448 | 1M+ | Transformer |
+| 6 | Autoformer | 0.449 | 0.459 | 500K | Transformer |
+| 7 | FEDformer | 0.376 | 0.419 | 500K | Transformer |
+
+> 📌 *Values sourced from original papers and [Time-Series-Library](https://github.com/thuml/Time-Series-Library)*
 
 ### Visual Comparisons
 

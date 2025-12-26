@@ -47,46 +47,7 @@ Instead of static weights, DynoNet learns to *generate* optimal hyperparameters 
   <img src="png/architecture_overview.png" width="90%" alt="DynoNet Architecture">
 </p>
 
-DynoNet operates on a **Controller-Worker** paradigm with the following data flow:
-
-```
-Input X (B, 336, 7)
-    │
-    ▼
-┌─────────┐
-│  RevIN  │  ← Reversible Instance Normalization
-└────┬────┘
-     │
-     ├────────────────────────────────┐
-     ▼                                ▼
-┌─────────────┐                ┌─────────────────┐
-│ Controller  │                │  Decomposition  │
-│    GRU      │                │  (Moving Avg)   │
-│  (64 dim)   │                └────────┬────────┘
-└──────┬──────┘                         │
-       │                     ┌──────────┴──────────┐
-       │ Generates:          ▼                     ▼
-       │ • FiLM (γ, β)   ┌────────┐          ┌───────────┐
-       │ • Gate Masks    │ Trend  │          │ Residual  │
-       │ • LR Scale      │ Linear │          │ 7×GRU     │
-       │ • Dropout Rate  └───┬────┘          └─────┬─────┘
-       │                     │                     │
-       └─────────────────────┼─────────────────────┘
-                             │ Modulates
-                             ▼
-                    ┌─────────────────┐
-                    │  Channel Mixer  │
-                    │     (MLP)       │
-                    └────────┬────────┘
-                             │
-                             ▼
-                    ┌─────────────────┐
-                    │  RevIN Denorm   │
-                    └────────┬────────┘
-                             │
-                             ▼
-                   Output Ŷ (B, 96, 7)
-```
+DynoNet operates on a **Controller-Worker** paradigm where the Controller dynamically modulates Worker networks based on input context.
 
 ### Component Details
 

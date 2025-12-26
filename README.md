@@ -167,8 +167,11 @@ The Controller doesn't just modulate architecture — it controls the entire tra
 ### Visual Comparisons
 
 <p align="center">
-  <img src="png/sota_comparison.png" width="48%">
-  <img src="png/sota_comparison_mse_mae.png" width="48%">
+  <img src="png/sota_benchmark_chart.png" width="85%">
+</p>
+
+<p align="center">
+  <img src="png/efficiency_vs_accuracy.png" width="70%">
 </p>
 
 ### Efficiency Analysis

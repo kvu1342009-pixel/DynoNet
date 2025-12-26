@@ -149,19 +149,20 @@ The Controller doesn't just modulate architecture — it controls the entire tra
 
 ## 📊 Results
 
-### Benchmark: ETTh1 (Horizon = 96)
+### Benchmark: ETTh1 Multivariate (M→M, Horizon = 96)
 
 | Rank | Model | MSE ↓ | MAE ↓ | Params | Type |
 |:----:|:------|:-----:|:-----:|-------:|:-----|
-| 🥇 | PatchTST | 0.370 | 0.400 | 550K | Transformer |
-| 🥈 | DLinear | 0.375 | 0.399 | 10K | Linear |
-| � | **DynoNet (Ours)** | **0.386** | **0.415** | **94K** | Dynamic RNN |
-| 4 | iTransformer | 0.386 | 0.405 | 500K | Transformer |
+| 🥇 | TimesNet | 0.384 | 0.402 | 500K | CNN |
+| 🥈 | **DynoNet (Ours)** | **0.386** | **0.415** | **94K** | Dynamic RNN |
+| 🥉 | iTransformer | 0.386 | 0.405 | 500K | Transformer |
+| 4 | PatchTST | 0.414 | 0.419 | 550K | Transformer |
 | 5 | Crossformer | 0.423 | 0.448 | 1M+ | Transformer |
-| 6 | Autoformer | 0.449 | 0.459 | 500K | Transformer |
-| 7 | FEDformer | 0.376 | 0.419 | 500K | Transformer |
+| 6 | DLinear | 0.456 | 0.452 | 10K | Linear |
+| 7 | Autoformer | 0.449 | 0.459 | 500K | Transformer |
+| 8 | FEDformer | 0.376 | 0.419 | 500K | Transformer |
 
-> 📌 *Values sourced from original papers and [Time-Series-Library](https://github.com/thuml/Time-Series-Library)*
+> 📌 *Multivariate forecasting (M→M): all 7 features as input and output. Values from [Time-Series-Library](https://github.com/thuml/Time-Series-Library) and original papers.*
 
 ### Visual Comparisons
 

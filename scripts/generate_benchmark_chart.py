@@ -104,7 +104,8 @@ def create_sota_benchmark_chart():
 
 def create_efficiency_scatter():
     """
-    Create a scatter plot showing MSE vs Parameters trade-off.
+    Create a clean bubble chart showing MSE vs Parameters trade-off.
+    Bubble size = inverse of params (smaller is better)
     """
     models = ['TimesNet', 'DynoNet', 'iTransformer', 'PatchTST', 
               'Crossformer', 'DLinear', 'Autoformer', 'FEDformer']
@@ -112,48 +113,82 @@ def create_efficiency_scatter():
     mse = [0.384, 0.386, 0.386, 0.414, 0.423, 0.456, 0.449, 0.376]
     params_k = [500, 94, 500, 550, 1000, 10, 500, 500]
     
-    fig, ax = plt.subplots(figsize=(10, 7), dpi=150)
+    fig, ax = plt.subplots(figsize=(12, 7), dpi=150)
+    fig.patch.set_facecolor('white')
+    ax.set_facecolor('#FAFAFA')
     
-    # Scatter points
-    colors = ['#2196F3'] * len(models)
-    colors[1] = '#E91E63'  # DynoNet in pink/red
+    # Color palette
+    colors = ['#64B5F6', '#E91E63', '#64B5F6', '#64B5F6', 
+              '#64B5F6', '#64B5F6', '#64B5F6', '#64B5F6']
     
-    sizes = [100] * len(models)
-    sizes[1] = 200  # DynoNet larger
+    # Bubble sizes (inverse relationship - smaller params = bigger bubble for visibility)
+    bubble_sizes = [max(50, 400 - p/3) for p in params_k]
+    bubble_sizes[1] = 500  # Make DynoNet biggest
+    
+    # Plot bubbles
+    for i, (model, x, y, size, color) in enumerate(zip(models, params_k, mse, bubble_sizes, colors)):
+        if model == 'DynoNet':
+            ax.scatter(x, y, s=size, c=color, edgecolors='white', 
+                      linewidths=3, zorder=10, alpha=0.9)
+            # Add glow effect
+            ax.scatter(x, y, s=size*1.5, c=color, alpha=0.2, zorder=5)
+        else:
+            ax.scatter(x, y, s=size, c=color, edgecolors='white', 
+                      linewidths=2, zorder=5, alpha=0.7)
+    
+    # Labels with clean positioning
+    label_offsets = {
+        'TimesNet': (10, 15),
+        'DynoNet': (0, -35),
+        'iTransformer': (10, -20),
+        'PatchTST': (10, 10),
+        'Crossformer': (10, 10),
+        'DLinear': (10, 10),
+        'Autoformer': (10, -20),
+        'FEDformer': (-70, 10),
+    }
     
     for i, (model, x, y) in enumerate(zip(models, params_k, mse)):
-        ax.scatter(x, y, s=sizes[i], c=colors[i], edgecolors='black', 
-                  linewidths=1.5, zorder=5, alpha=0.8)
+        offset = label_offsets.get(model, (10, 5))
+        weight = 'bold' if model == 'DynoNet' else 'normal'
+        color = '#E91E63' if model == 'DynoNet' else '#333333'
         
-        # Label offset
-        offset = (15, 5) if model != 'DynoNet' else (-60, -15)
         ax.annotate(model, (x, y), textcoords="offset points", 
-                   xytext=offset, fontsize=9,
-                   fontweight='bold' if model == 'DynoNet' else 'normal')
+                   xytext=offset, fontsize=11, fontweight=weight, color=color)
     
-    # Highlight DynoNet region
-    circle = plt.Circle((94, 0.386), 30, color='#E91E63', alpha=0.1)
-    ax.add_patch(circle)
+    # DynoNet callout box
+    ax.annotate('★ DynoNet\n94K params\nMSE: 0.386', 
+                xy=(94, 0.386), xytext=(200, 0.44),
+                fontsize=11, color='#E91E63', fontweight='bold',
+                bbox=dict(boxstyle='round,pad=0.5', facecolor='white', 
+                         edgecolor='#E91E63', linewidth=2),
+                arrowprops=dict(arrowstyle='->', color='#E91E63', lw=2,
+                               connectionstyle='arc3,rad=-0.2'))
     
-    ax.set_xlabel('Parameters (×1000)', fontsize=12, fontweight='bold')
-    ax.set_ylabel('MSE ↓', fontsize=12, fontweight='bold')
-    ax.set_title('Efficiency vs Accuracy Trade-off\nETTh1 M→M Horizon=96', 
-                fontsize=14, fontweight='bold', pad=15)
+    # Axes styling
+    ax.set_xlabel('Model Size (Parameters ×1000)', fontsize=13, fontweight='bold', labelpad=10)
+    ax.set_ylabel('MSE (Lower is Better) ↓', fontsize=13, fontweight='bold', labelpad=10)
+    ax.set_title('Efficiency vs Accuracy Trade-off\n', fontsize=16, fontweight='bold')
+    ax.text(0.5, 1.02, 'ETTh1 Multivariate (M→M), Horizon=96', 
+           transform=ax.transAxes, ha='center', fontsize=11, color='gray')
     
-    # Add quadrant lines
-    ax.axhline(y=0.40, color='gray', linestyle='--', alpha=0.5)
-    ax.axvline(x=300, color='gray', linestyle='--', alpha=0.5)
+    # Set limits with padding
+    ax.set_xlim(-50, 1150)
+    ax.set_ylim(0.36, 0.48)
     
-    # Annotations for quadrants
-    ax.text(50, 0.35, 'Best: Low Params\nLow Error', fontsize=9, 
-           color='green', ha='center', style='italic')
-    ax.text(800, 0.35, 'High Params\nLow Error', fontsize=9, 
-           color='orange', ha='center', style='italic')
+    # Clean grid
+    ax.grid(True, linestyle='-', alpha=0.2, color='gray')
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_linewidth(1.5)
+    ax.spines['bottom'].set_linewidth(1.5)
     
-    ax.set_xlim(-50, 1100)
-    ax.set_ylim(0.35, 0.48)
-    
-    ax.grid(True, linestyle='--', alpha=0.3)
+    # Add efficiency zone
+    rect = plt.Rectangle((0, 0.36), 200, 0.05, 
+                         facecolor='#C8E6C9', alpha=0.3, zorder=1)
+    ax.add_patch(rect)
+    ax.text(100, 0.365, '✓ High Efficiency Zone', fontsize=9, 
+           ha='center', color='#2E7D32', style='italic')
     
     plt.tight_layout()
     plt.savefig('png/efficiency_vs_accuracy.png', dpi=300, bbox_inches='tight',

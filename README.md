@@ -1,91 +1,90 @@
 <div align="center">
 
-# ⚡ DynoNet
+# DynoNet
 **Dynamic Recurrent Networks for Efficient Time Series Forecasting**
 
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c?style=for-the-badge&logo=pytorch)](https://pytorch.org/)
-[![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
-[![SOTA](https://img.shields.io/badge/SOTA-ETTh1_Horizon96-success?style=for-the-badge&logo=medal)](#-leaderboard)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c?style=flat&logo=pytorch)](https://pytorch.org/)
+[![License](https://img.shields.io/badge/License-MIT-blue?style=flat)](LICENSE)
+[![SOTA](https://img.shields.io/badge/SOTA-ETTh1_Horizon96-success?style=flat)](https://github.com/kvu1342009-pixel/DynoNet)
 
 <p align="center">
   <img src="png/paper_efficiency_plot.png" width="80%" alt="Efficiency Plot">
 </p>
 
-*"Turning Weights into Fluids."* — DynoNet introduces a lightweight, dynamic architecture where model parameters adapt on-the-fly. 
-**5x Fewer Parameters** than Transformers, yet **SOTA Accuracy**.
+*DynoNet introduces a lightweight, dynamic architecture where model parameters adapt on-the-fly. It achieves state-of-the-art accuracy with 5x fewer parameters compared to Transformer-based models.*
 
-[Abstract](#-abstract) •
-[Leaderboard](#-leaderboard) •
-[Architecture](#-architecture) •
-[How to Run](#-how-to-run) •
-[Citation](#-citation)
+[Abstract](#abstract) •
+[Leaderboard](#leaderboard) •
+[Architecture](#architecture) •
+[Usage](#usage) •
+[Citation](#citation)
 
 </div>
 
 ---
 
-## 📜 Abstract
+## Abstract
 
-Time Series Forecasting has been dominated by massive Transformer models (PatchTST, iTransformer) that are computationally expensive. **DynoNet** challenges this trend by revisiting Reccurent Neural Networks (RNNs) with a twist: **Meta-Learning**.
+Time Series Forecasting has recently been dominated by massive Transformer models (e.g., PatchTST, iTransformer) which are computationally expensive. **DynoNet** challenges this trend by revisiting Recurrent Neural Networks (RNNs) combined with **Meta-Learning principles**.
 
-Instead of static weights, DynoNet employs a **Controller** that dynamically generates the weights (FiLM layers) for a lightweight **Worker Network** based on the input context. This allows the model to adapt to non-stationary data instantly without retraining.
+Instead of relying on static weights, DynoNet employs a **Controller** that dynamically generates the parameters (FiLM layers) for a lightweight **Worker Network** based on the input context. This allows the model to adapt to non-stationary data instantly without retraining, offering a superior trade-off between efficiency and accuracy.
 
 ---
 
-## 🏆 Leaderboard
+## Leaderboard
 
 **Benchmark:** ETTh1 Dataset (Multivariate Forecasting), Horizon = 96.
 
-| Rank | 🤖 Model | 📉 MSE | 📏 MAE | 📦 Params | 🏗️ Type |
+| Rank | Model | MSE | MAE | Params | Type |
 | :---: | :--- | :---: | :---: | :---: | :--- |
-| 🥇 | **TSMixer** | 0.361 | 0.395 | ~500K | MLP |
-| 🥈 | **DynoNet (Ours)** | **0.386** | **0.415** | **94K** 🚀 | **Dynamic RNN** |
-| 🥉 | **PatchTST** | 0.388 | 0.400 | >550K | Transformer |
+| 1 | **TSMixer** | 0.361 | 0.395 | ~500K | MLP |
+| 2 | **DynoNet (Ours)** | **0.386** | **0.415** | **94K** | **Dynamic RNN** |
+| 3 | **PatchTST** | 0.388 | 0.400 | >550K | Transformer |
 | 4 | **DLinear** | 0.390 | 0.405 | 10K | Linear |
 | 5 | **Crossformer** | 0.395 | 0.410 | >1M | Transformer |
 | 6 | **iTransformer** | 0.487 | 0.458 | >500K | Transformer |
 
-> **Note:** DynoNet achieves competitive performance (Rank 2) with extremely low parameter count, making it ideal for edge deployment.
+> **Note:** DynoNet achieves Rank 2 performance with significantly fewer parameters than top-tier Transformer models, demonstrating exceptional efficiency.
 
 ---
 
-## 🧠 Architecture
+## Architecture
 
-DynoNet operates on a **"Brain-Muscle"** paradigm.
+DynoNet operates on a **Controller-Worker** paradigm.
 
 <div align="center">
 <table>
 <tr>
-<td width="50%" align="center">
+<td width="50%" valign="top">
 
-### 1. The Dynamic Controller (Brain)
+### 1. The Dynamic Controller
 Analyses the global context and generates:
 - **FiLM Parameters:** $(\gamma, \beta)$ to modulate workers.
 - **Gate Masks:** To select relevant input features.
-- **Dynamic Hyperparams:** Learning rate & dropout.
+- **Dynamic Hyperparams:** Adaptive learning rate & dropout.
 
 </td>
-<td width="50%" align="center">
+<td width="50%" valign="top">
 
-### 2. The Distributed Workers (Muscle)
+### 2. The Distributed Workers
 7 independent, tiny GRU networks (one per channel).
-They have **no static weights** for adaptation. They are fully controlled by the Brain.
+They possess **no static weights** for adaptation and are fully modulated by the signals from the Controller.
 
 </td>
 </tr>
 </table>
 </div>
 
-### 🔬 Visual Proofs
+### Visual Analysis
 
-| **Forecast Quality** | **Internal Dynamics** |
+| Forecast Quality | Internal Dynamics |
 | :---: | :---: |
 | <img src="png/paper_forecast_all_features.png" width="100%"> | <img src="png/paper_dynamics_heatmap.png" width="100%"> |
 | *DynoNet tracks ground truth closely across all 7 features.* | *The Controller dynamically activates different gates for different inputs.* |
 
 ---
 
-## � How to Run
+## Usage
 
 ### Installation
 ```bash
@@ -94,7 +93,9 @@ cd DynoNet
 pip install -r requirements.txt
 ```
 
-### Reproduce SOTA Results
+### Reproduce Results
+Run the training script with the exact configuration used to achieve the reported results:
+
 ```bash
 python main.py \
   --seq_len 512 --pred_len 96 \
@@ -106,9 +107,9 @@ python main.py \
 
 ---
 
-## � Citation
+## Citation
 
-If you find this code useful, please cite our work:
+If you find this code useful for your research, please cite:
 
 <div align="center">
 

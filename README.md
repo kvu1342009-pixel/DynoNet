@@ -139,28 +139,16 @@ class WorkerNet(nn.Module):
 
 **This section addresses the question: "How does gradient flow through the Controller?"**
 
-```
-                    Forward Pass
-Input ──────────────────────────────────────────────────────────> Output
-   │                                                               │
-   └─> Controller ─> modulation signals ──────────────────────────>│
-         ↑                    │                                     │
-         │                    v                                     │
-         │              Worker Networks ─ (gradients w.r.t. loss) ──┘
-         │                    │
-         │                    v
-   ┌─────┴──────────────────────────────────────────────────────────┐
-   │                     Backward Pass                              │
-   │  Worker gradients: ∂L/∂θ_worker ← standard backprop            │
-   │  Controller gradients: ∂L/∂θ_controller via chain rule:        │
-   │                                                                 │
-   │    ∂L/∂θ_ctrl = (∂L/∂h) · (∂h/∂modulation) · (∂modulation/∂θ)  │
-   │                                                                 │
-   │  where modulation = {γ, β, dropout, gate_masks, ...}           │
-   └─────────────────────────────────────────────────────────────────┘
-```
+<p align="center">
+  <img src="png/gradient_flow.png" width="85%" alt="Gradient Flow Analysis">
+</p>
 
 **Key Insight**: Gradients flow from the loss through the Worker's activations, through the FiLM modulation operations, back to the Controller. This is **standard first-order backpropagation**, not second-order meta-gradients.
+
+**Mathematical Formulation**:
+$$\frac{\partial L}{\partial \theta_{ctrl}} = \frac{\partial L}{\partial h} \cdot \frac{\partial h}{\partial \text{modulation}} \cdot \frac{\partial \text{modulation}}{\partial \theta_{ctrl}}$$
+
+where modulation = {γ, β, dropout, gate_masks, ...}
 
 ### E. Bi-Level Optimization (NOT Meta-Learning)
 

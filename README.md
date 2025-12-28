@@ -1,4 +1,4 @@
-# DynoNet: When a Tiny Controller Beats Giant Transformers
+# DynoNet: Hypernetwork-Based Adaptive Time Series Forecasting via Dynamic Weight Modulation
 
 <div align="center">
 
@@ -6,207 +6,353 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c?logo=pytorch)](https://pytorch.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-*"What if we stopped making models bigger and started making them smarter?"*
-
 </div>
 
 ---
 
-## TL;DR
+## Abstract
 
-I built **DynoNet** — a tiny 94K parameter model that nearly matches 500K+ Transformer giants on time series forecasting. The secret? Instead of learning static weights, it learns *how to adapt* on-the-fly.
+Time series forecasting faces fundamental challenges including **non-stationarity** and **distribution shift**. Large-scale Transformer models (500K+ parameters) address these through increased model capacity but suffer from computational inefficiency and extensive hyperparameter tuning. This paper presents **DynoNet**, a compact 94K-parameter architecture that employs **Hypernetwork-based dynamic weight modulation** to achieve input-adaptive computation. Our core contribution is a **Controller-Worker architecture** where a lightweight Controller network generates modulation signals (FiLM parameters, adaptive dropout rates, channel-wise learning rate scales) that condition Worker networks at inference time. We clarify that our approach is distinct from gradient-based meta-learning (e.g., MAML); instead, it belongs to the **Hypernetwork** and **Adaptive Computation** paradigms. On ETTh1 (H=96), DynoNet achieves MSE 0.386, ranking competitively among SOTA methods while using 5× fewer parameters. We acknowledge that our evaluation is limited to a single dataset with early stopping at epoch 24, and future work requires extended training, learning rate scheduling, and multi-dataset validation to establish generalizability.
 
-**Key results on ETTh1 (H=96):**
-- 🎯 **MSE: 0.386** (ranks #3, beating PatchTST, iTransformer, DLinear, Autoformer)
-- ⚡ **5× fewer parameters** than comparable models
-- 🧠 **Zero hyperparameter tuning** — the model learns its own dropout, learning rate, etc.
+**Keywords:** Time Series Forecasting, Hypernetworks, Dynamic Weight Generation, Feature-wise Linear Modulation (FiLM), Adaptive Computation
 
 ---
 
-## The Problem I Wanted to Solve
+## I. Introduction
 
-Everyone's building bigger Transformers. PatchTST has 550K params. iTransformer has 500K. They work great, but:
+### A. Problem Statement
 
-1. **They're expensive** — both to train and deploy
-2. **They need careful tuning** — wrong learning rate? Your model's toast.
-3. **They're static** — same weights for easy and hard inputs
+Time series forecasting is fundamentally challenged by:
 
-I asked myself: *What if instead of learning complex patterns, we learned how to learn them?*
+1. **Non-stationarity**: Statistical properties (mean, variance) change over time
+2. **Distribution Shift**: Training and test distributions differ
+3. **Multi-scale Temporal Patterns**: Coexistence of short-term fluctuations and long-term trends
+
+State-of-the-art (SOTA) methods address these through:
+- **Transformer architectures** (PatchTST, iTransformer): High capacity but computationally expensive
+- **Decomposition methods** (DLinear, Autoformer): Explicit trend-seasonal separation
+- **Normalization techniques** (RevIN): Mitigate distribution shift
+
+### B. Research Gap
+
+Existing approaches employ **static weight networks** that apply identical transformations regardless of input characteristics. We hypothesize that **input-conditional weight modulation** can achieve comparable accuracy with significantly reduced parameter count.
+
+### C. Contributions
+
+1. **Architectural Contribution**: A Hypernetwork-based Controller-Worker framework where a Controller generates modulation signals for Worker networks
+2. **Theoretical Clarification**: We explicitly position our approach within the Hypernetwork/Dynamic Weight paradigm, distinct from gradient-based meta-learning (MAML)
+3. **Empirical Analysis**: Demonstration of parameter efficiency on ETTh1 with transparent discussion of limitations
 
 ---
 
-## My Solution: Controller-Worker Architecture
+## II. Related Work
+
+### A. Hypernetworks and Dynamic Weight Generation
+
+Hypernetworks [Ha et al., 2016] generate weights for a main network using a secondary network. Our Controller-Worker architecture follows this paradigm:
+
+```
+Controller(input) → modulation signals → Worker(input; modulation)
+```
+
+This differs fundamentally from **Meta-Learning (MAML)** [Finn et al., 2017], which requires:
+- **Inner Loop**: Gradient-based adaptation on support set
+- **Outer Loop**: Meta-gradient computation through inner loop (second-order derivatives)
+
+**Our approach does NOT compute meta-gradients**. Instead, the Controller is trained via standard first-order optimization on validation data.
+
+### B. Feature-wise Linear Modulation (FiLM)
+
+FiLM [Perez et al., 2018] conditions neural network activations via affine transformations:
+
+$$h' = \gamma \odot h + \beta$$
+
+where $\gamma, \beta$ are generated by a conditioning network. DynoNet extends FiLM to time series by generating channel-specific modulation parameters.
+
+### C. Reversible Instance Normalization (RevIN)
+
+RevIN [Kim et al., 2022] addresses distribution shift by:
+1. Normalizing input to zero mean, unit variance
+2. Denormalizing output to original distribution
+
+We employ RevIN as a preprocessing step to handle non-stationarity.
+
+---
+
+## III. Methodology
+
+### A. Architecture Overview
 
 <p align="center">
   <img src="png/architecture_overview.png" width="80%" alt="DynoNet Architecture">
 </p>
 
-DynoNet has two parts:
+DynoNet consists of three components:
 
-| Component | What it does | Size |
-|-----------|--------------|------|
-| **Controller** | Looks at input, decides *how* workers should behave | 25K params |
-| **Workers** | 7 tiny GRUs, one per channel, actually do the forecasting | 65K params |
+| Component | Function | Parameters |
+|-----------|----------|------------|
+| **RevIN** | Distribution shift mitigation | ~100 |
+| **Controller (ControlNet)** | Generate modulation signals | ~25K |
+| **Workers (DistributedWorker)** | Channel-independent forecasting | ~65K |
 
-The magic: **Controller generates modulation signals** (FiLM parameters, dropout rates, learning rate scales) that adapt the workers to each specific input.
+### B. Controller Network (Hypernetwork)
 
-Think of it like a football coach directing players. The coach doesn't score goals — they decide *strategy* based on the opponent.
+The Controller is a GRU-based network that observes the input sequence and generates modulation signals:
+
+```python
+class ControlNet(nn.Module):
+    def forward(self, x: Tensor) -> Dict:
+        ctx = self.brain(x)  # GRU encoding: (B, hidden_dim)
+        return {
+            "film_params_list": self.film_gens(ctx),    # FiLM: γ, β per layer
+            "dropout_rate": self.dropout_ctrl(ctx),     # Adaptive dropout
+            "lr_scale": self.lr_ctrl(ctx),              # Per-channel LR scale
+            "gate_masks": self.gate_ctrl(ctx),          # Feature gating
+            ...
+        }
+```
+
+**Signal Bounding**: All control signals are bounded via sigmoid activation to ensure training stability:
+- `dropout_rate ∈ [0, 0.7]`
+- `lr_scale ∈ [0.01, 5.0]`
+- `gate_masks ∈ [0, 1]`
+
+### C. Worker Network (Main Network)
+
+Each channel has an independent GRU-based Worker that receives modulation from the Controller:
+
+```python
+class WorkerNet(nn.Module):
+    def forward(self, x, film_params, dropout_rate, gate_masks):
+        h = self.gru(x)
+        # FiLM modulation
+        γ, β = film_params
+        h = γ * h + β
+        # Adaptive dropout
+        h = F.dropout(h, p=dropout_rate)
+        # Feature gating
+        h = h * gate_masks
+        return self.projection(h)
+```
+
+### D. Gradient Flow Analysis
+
+**This section addresses the question: "How does gradient flow through the Controller?"**
+
+```
+                    Forward Pass
+Input ──────────────────────────────────────────────────────────> Output
+   │                                                               │
+   └─> Controller ─> modulation signals ──────────────────────────>│
+         ↑                    │                                     │
+         │                    v                                     │
+         │              Worker Networks ─ (gradients w.r.t. loss) ──┘
+         │                    │
+         │                    v
+   ┌─────┴──────────────────────────────────────────────────────────┐
+   │                     Backward Pass                              │
+   │  Worker gradients: ∂L/∂θ_worker ← standard backprop            │
+   │  Controller gradients: ∂L/∂θ_controller via chain rule:        │
+   │                                                                 │
+   │    ∂L/∂θ_ctrl = (∂L/∂h) · (∂h/∂modulation) · (∂modulation/∂θ)  │
+   │                                                                 │
+   │  where modulation = {γ, β, dropout, gate_masks, ...}           │
+   └─────────────────────────────────────────────────────────────────┘
+```
+
+**Key Insight**: Gradients flow from the loss through the Worker's activations, through the FiLM modulation operations, back to the Controller. This is **standard first-order backpropagation**, not second-order meta-gradients.
+
+### E. Bi-Level Optimization (NOT Meta-Learning)
+
+We employ a bi-level optimization strategy, but **this is NOT MAML**:
+
+```
+Level 1 (Worker Update): θ_worker ← θ_worker - α · ∇_{θ_worker} L_train(x_train)
+Level 2 (Controller Update): θ_ctrl ← θ_ctrl - β · ∇_{θ_ctrl} L_val(x_val)
+```
+
+**Critical Distinction**:
+- **MAML**: Outer loop optimizes `∇L_val(θ - α·∇L_train)`, requiring **second-order derivatives**
+- **Our approach**: Controller and Worker are optimized **independently** on different data splits; no meta-gradients
+
+**Purpose**: Training Controller on validation data encourages it to generate modulation signals that improve generalization, not just training fit.
+
+### F. Theoretical Justification: Why This Combination?
+
+| Technique | Addresses | Mechanism |
+|-----------|-----------|-----------|
+| **RevIN** | Distribution Shift | Instance-level normalization + denormalization |
+| **FiLM Modulation** | Non-stationarity | Input-conditional affine transformation adapts to local statistics |
+| **Adaptive Dropout** | Overfitting on volatile channels | Higher dropout for noisier inputs (dynamically learned) |
+| **Channel-wise LR** | Varying channel difficulty | Faster learning for harder channels |
+| **Feature Gating** | Irrelevant feature suppression | Soft attention over hidden dimensions |
+
+**Hypothesis**: Non-stationarity manifests differently across channels and time windows. Input-conditional modulation allows the model to adapt its behavior to local characteristics.
 
 ---
 
-## 💡 The Core Insight: Why Not Let a Model Manage Other Models?
+## IV. Experimental Setup
 
-Traditional approach:
-```
-Data → Model (learns alone) → Prediction
-```
+### A. Dataset
 
-**The question I asked:** Why do we let models learn by themselves? Why not have another model manage them?
+| Dataset | Features | Frequency | Train/Val/Test | Task |
+|---------|----------|-----------|----------------|------|
+| ETTh1 | 7 channels | Hourly | 12/4/4 months | Multivariate forecasting |
 
-DynoNet's approach:
-```
-Data → Controller (observes, decides strategy)
-              ↓
-       Workers (execute orders) → Prediction
-```
+### B. Configuration
 
-### Real-world analogy: Football Team
+| Hyperparameter | Value |
+|----------------|-------|
+| Input length | 336 |
+| Prediction length | 96 |
+| Controller hidden | 32 |
+| Worker hidden | 16 |
+| Batch size | 64 |
+| Learning rate | 1e-3 |
+| Optimizer | AdamW |
+| Max epochs | 100 |
+| Early stopping | Patience 10 |
 
-| Traditional ML | DynoNet |
-|----------------|---------|
-| 11 players play by themselves | **Coach** directs the team |
-| Same strategy every game | Coach **adapts** to each opponent |
-| Fixed hyperparameters | **Learned** hyperparameters per input |
+### C. Baseline Models
 
-### What the Controller actually controls:
+All baseline results are sourced from published papers and benchmark repositories:
 
-| Problem with "learning alone" | How Controller fixes it |
-|-------------------------------|------------------------|
-| Fixed learning rate for all inputs | **Adaptive LR** per channel, per sample |
-| Fixed dropout | **Learned dropout** (noisier input → more dropout) |
-| Gradient explosion | **Adaptive gradient clipping** |
-| All features treated equally | **Gate masks** ignore unimportant features |
+| Model | Type | Parameters | Source |
+|-------|------|------------|--------|
+| TimesNet | CNN + Inception | 500K | Wu et al., 2023 |
+| iTransformer | Inverted Transformer | 500K | Liu et al., 2024 |
+| PatchTST | Patch + Transformer | 550K | Nie et al., 2023 |
+| Crossformer | Cross-dimension Attention | 500K | Zhang et al., 2023 |
+| DLinear | Decomposition + Linear | 10K | Zeng et al., 2023 |
+| FEDformer | Frequency Enhanced | 500K | Zhou et al., 2022 |
+| Autoformer | Auto-correlation | 500K | Wu et al., 2021 |
 
-### Proof it works:
+---
 
-| Mode | Test MSE |
-|------|:--------:|
-| Workers alone (no Controller) | 0.4049 |
-| **Workers + Controller** | **0.3858** |
+## V. Results
 
-**Controller reduces MSE by 4.7%!** Having a "manager" genuinely helps.
-
-## Results
-
-### Benchmark Comparison
+### A. Quantitative Comparison
 
 <p align="center">
   <img src="png/H96_benchmark.png" width="90%" alt="SOTA Benchmark">
 </p>
 
-**Table: ETTh1 Multivariate Forecasting (H=96)**
+**Table I: ETTh1 Multivariate Forecasting (H=96)**
 
-| Model | MSE ↓ | MAE ↓ | Params | vs DynoNet |
-|-------|:-----:|:-----:|-------:|:----------:|
-| FEDformer | 0.376 | 0.419 | 500K | +0.010 |
-| TimesNet | 0.384 | 0.402 | 500K | +0.002 |
-| **DynoNet** | **0.386** | **0.415** | **94K** | — |
-| iTransformer | 0.386 | 0.405 | 500K | 0.000 |
-| PatchTST | 0.414 | 0.419 | 550K | -0.028 |
-| DLinear | 0.456 | 0.452 | 10K | -0.070 |
-| Autoformer | 0.449 | 0.459 | 500K | -0.063 |
+| Model | MSE ↓ | MAE ↓ | Params | Rank |
+|-------|:-----:|:-----:|-------:|:----:|
+| FEDformer | 0.376 | 0.419 | 500K | 1 |
+| TimesNet | 0.384 | 0.402 | 500K | 2 |
+| **DynoNet** | **0.386** | **0.415** | **94K** | 3 |
+| iTransformer | 0.386 | 0.405 | 500K | 3 |
+| PatchTST | 0.414 | 0.419 | 550K | 5 |
+| DLinear | 0.456 | 0.452 | 10K | 6 |
+| Autoformer | 0.449 | 0.459 | 500K | 7 |
 
-**We're #3 overall, but #1 in efficiency.** DynoNet achieves nearly the same accuracy as models 5× its size.
+**Observation**: DynoNet achieves competitive performance (#3) with 5× fewer parameters than Transformer-based methods.
 
-### Training Dynamics
+### B. Training Dynamics
 
 <p align="center">
   <img src="png/H96_training_curves.png" width="100%" alt="Training Curves">
 </p>
 
-A few things I noticed:
-- **Converges fast** — best validation MSE (0.641) reached by epoch 24
-- **No overfitting** — train and val loss stay close
-- **Stable training** — no spikes or crashes (thanks Controller!)
+| Metric | Value |
+|--------|-------|
+| Best validation MSE | 0.641 |
+| Best epoch | 24 |
+| Training stopped | Epoch 24 (early stopping) |
+| Train-Val gap | Minimal (no severe overfitting) |
 
-### Per-Channel Analysis
+### C. Per-Channel Analysis
 
 <p align="center">
   <img src="png/H96_channel_metrics.png" width="90%" alt="Per-Channel Metrics">
 </p>
 
-**Interesting findings:**
-- **OT (Oil Temperature)** is easiest to predict (MSE: 0.054) — makes sense, it's the "target" variable others depend on
-- **HUFL/MUFL** are hardest (MSE: ~0.77-0.79) — these are "High Usage" features with high volatility
-- The model learns to allocate more attention to harder channels (via learnable dropout and gating)
+**Table II: Per-Channel Performance**
 
-| Feature | MSE | MAE | Insight |
-|---------|:---:|:---:|---------|
-| OT | 0.054 | 0.178 | Smooth, easy target |
-| LULL | 0.129 | 0.280 | Low usage = low variance |
+| Feature | MSE | MAE | Characteristic |
+|---------|:---:|:---:|----------------|
+| OT (Oil Temperature) | 0.054 | 0.178 | Smooth, target variable |
+| LULL | 0.129 | 0.280 | Low usage, low variance |
 | MULL | 0.186 | 0.316 | Medium usage, stable |
-| HULL | 0.231 | 0.362 | High usage, some variance |
-| LUFL | 0.541 | 0.534 | Low freq high volatility |
-| HUFL | 0.769 | 0.621 | Hard! High usage, high freq |
-| MUFL | 0.791 | 0.617 | Hardest! |
+| HULL | 0.231 | 0.362 | High usage, moderate variance |
+| LUFL | 0.541 | 0.534 | Low frequency, high volatility |
+| HUFL | 0.769 | 0.621 | High usage, high frequency |
+| MUFL | 0.791 | 0.617 | Highest volatility |
+
+### D. Ablation Study
+
+| Configuration | Test MSE | Δ |
+|---------------|:--------:|:-:|
+| Workers only (no Controller) | 0.4049 | — |
+| Workers + Controller | 0.3858 | -4.7% |
 
 ---
 
-## How It Works (Technical Details)
+## VI. Limitations and Future Work
 
-### 1. Bi-Level Meta-Learning
+### A. Acknowledged Limitations
 
-This is the key innovation. Training alternates between:
+1. **Limited Dataset Scope**: Evaluation on ETTh1 only. Generalization to Weather, Traffic, Electricity datasets unverified.
 
-```
-Level 1: Worker learns to forecast (on train data)
-   θ_worker ← θ_worker - lr × ∇L_train
+2. **Early Stopping**: Training stopped at epoch 24 due to early stopping. SOTA models typically train for 100+ epochs with learning rate decay (CosineAnnealingLR, ReduceLROnPlateau).
 
-Level 2: Controller learns to help Worker generalize (on val data)
-   θ_controller ← θ_controller - lr × ∇L_val
-```
+3. **Potential Overfitting to Data Subset**: Early convergence may indicate the model learned a subset of patterns rather than generalizable representations.
 
-By training Controller on validation data, it learns to generate signals that improve *generalization*, not just training fit. It's like having a coach who watches your practice matches and adjusts your strategy for the real game.
+4. **No Cross-Channel Interaction**: Workers are independent; potential performance gains from cross-channel attention unexplored.
 
-### 2. Dynamic Signals
+5. **Terminology Clarification**: Earlier versions incorrectly described this as "Meta-Learning." We clarify this is **Hypernetwork-based Adaptive Computation**.
 
-The Controller outputs these per-channel:
+### B. Future Directions
 
-| Signal | Range | What it does |
-|--------|-------|--------------|
-| `gamma, beta` (FiLM) | ℝ | Scale and shift hidden states |
-| `dropout_rate` | [0, 0.7] | More dropout for noisy inputs |
-| `lr_scale` | [0.01, 5.0] | Learn faster/slower per channel |
-| `gate_mask` | [0, 1] | Attention-like feature selection |
+1. **Extended Training Protocol**:
+   - Train for 100+ epochs with LR scheduling
+   - Implement CosineAnnealingWarmRestarts
+   - Ablate effect of early stopping threshold
 
-### 3. Trend-Residual Decomposition
+2. **Multi-Dataset Validation**:
+   - ETTm1, ETTm2 (minute-level)
+   - Weather, Traffic, Electricity
+   - Domain-specific datasets (finance, healthcare)
 
-Stolen from DLinear (credit where due). I split the signal into:
-- **Trend** — handled by a simple linear projection (full 512-step lookback)
-- **Residual** — handled by GRU workers (last 96 steps only)
+3. **Theoretical Analysis**:
+   - Formal analysis of modulation signal dynamics
+   - Information-theoretic perspective on channel-wise adaptation
 
-This works because GRUs struggle with long sequences, but linear projections handle them fine.
+4. **Architectural Extensions**:
+   - Cross-channel attention in Controller
+   - Hierarchical modulation (different granularities)
+   - Integration with frequency-domain methods
 
 ---
 
-## Usage
+## VII. Reproducibility
 
-### Quick Start
+### A. Installation
 
 ```bash
-# Clone
 git clone https://github.com/kvu1342009-pixel/DynoNet.git
 cd DynoNet
-
-# Install
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-
-# Train
-python H96.py
 ```
 
-### Expected Output
+### B. Training
+
+```bash
+# ETTh1, Horizon=96
+python H96.py
+
+# ETTh1, Horizon=336
+python H336.py
+
+# ETTh1, Horizon=720
+python H720.py
+```
+
+### C. Expected Output
 
 ```
 ============================================================
@@ -217,25 +363,28 @@ MAE: 0.4153
 ============================================================
 ```
 
-Plus automatic generation of:
-- `png/H96_benchmark.png` — SOTA comparison chart
-- `png/H96_training_curves.png` — Loss/MSE/MAE curves
-- `png/H96_channel_metrics.png` — Per-feature breakdown
-- `logs/H96_benchmark_*.json` — Detailed logs
+### D. Generated Artifacts
+
+| File | Description |
+|------|-------------|
+| `png/H96_benchmark.png` | SOTA comparison chart |
+| `png/H96_training_curves.png` | Training curves |
+| `png/H96_channel_metrics.png` | Per-channel breakdown |
+| `logs/H96_benchmark_*.json` | Detailed training logs |
 
 ---
 
-## Project Structure
+## VIII. Project Structure
 
 ```
 DynoNet/
-├── H96.py                    # Train horizon=96 (main script)
-├── H336.py                   # Train horizon=336
-├── H720.py                   # Train horizon=720
+├── H96.py                    # Training script (H=96)
+├── H336.py                   # Training script (H=336)
+├── H720.py                   # Training script (H=720)
 ├── models/
-│   ├── dyno_net.py           # Main model (orchestrates everything)
-│   ├── control_net.py        # The "brain" — generates modulation signals
-│   ├── distributed_worker.py # Coordinates 7 GRU workers
+│   ├── dyno_net.py           # Main orchestrator
+│   ├── control_net.py        # Hypernetwork (Controller)
+│   ├── distributed_worker.py # Worker coordinator
 │   ├── worker_net.py         # Individual GRU worker
 │   └── revin.py              # Reversible Instance Normalization
 ├── data/
@@ -247,38 +396,45 @@ DynoNet/
 
 ---
 
-## Lessons Learned
+## IX. Acknowledgments
 
-1. **Bigger isn't always better.** A well-designed 94K model can compete with 500K+ models.
-
-2. **Meta-learning works.** Training Controller on validation data was the key insight. It forces the model to learn generalizable modulation strategies.
-
-3. **Channel independence matters.** ETTh1 features have different dynamics. Independent workers + Controller coordination outperforms shared representations.
-
-4. **Simple baselines are strong.** Adding DLinear-style trend projection was a huge boost. Don't ignore linear models.
+We thank the anonymous reviewer for critical feedback on:
+- Clarifying the distinction between Hypernetworks and Meta-Learning
+- Highlighting the need for extended training and multi-dataset validation
+- Emphasizing the importance of theoretical justification for architectural choices
 
 ---
 
-## Limitations & Future Work
+## X. References
 
-**What's not working yet:**
-- Only tested on ETTh1. Need more datasets (Weather, Traffic, etc.)
-- No cross-channel attention. Workers are independent — might be leaving performance on the table.
-- Bi-level training is slower than single-level (~2× epochs)
+[1] Ha, D., Dai, A., & Le, Q. V. (2016). Hypernetworks. *arXiv preprint arXiv:1609.09106*.
 
-**Ideas to try:**
-- Add a tiny cross-channel mixer in Controller
-- Test on longer horizons (H=720)
-- Explore Controller → Worker gradient flow (MAML-style)
+[2] Finn, C., Abbeel, P., & Levine, S. (2017). Model-Agnostic Meta-Learning for Fast Adaptation of Deep Networks. *ICML*.
+
+[3] Perez, E., Strub, F., De Vries, H., Dumoulin, V., & Courville, A. (2018). FiLM: Visual Reasoning with a General Conditioning Layer. *AAAI*.
+
+[4] Kim, T., Kim, J., Tae, Y., Park, C., Choi, J. H., & Choo, J. (2022). Reversible Instance Normalization for Accurate Time-Series Forecasting against Distribution Shift. *ICLR*.
+
+[5] Nie, Y., Nguyen, N. H., Sinthong, P., & Kalagnanam, J. (2023). A Time Series is Worth 64 Words: Long-term Forecasting with Transformers. *ICLR*.
+
+[6] Liu, Y., Hu, T., Zhang, H., Wu, H., Wang, S., Ma, L., & Long, M. (2024). iTransformer: Inverted Transformers Are Effective for Time Series Forecasting. *ICLR*.
+
+[7] Wu, H., Xu, J., Wang, J., & Long, M. (2023). TimesNet: Temporal 2D-Variation Modeling for General Time Series Analysis. *ICLR*.
+
+[8] Zeng, A., Chen, M., Zhang, L., & Xu, Q. (2023). Are Transformers Effective for Time Series Forecasting? *AAAI*.
+
+[9] Zhou, T., Ma, Z., Wen, Q., Wang, X., Sun, L., & Jin, R. (2022). FEDformer: Frequency Enhanced Decomposed Transformer for Long-term Series Forecasting. *ICML*.
+
+[10] Wu, H., Xu, J., Wang, J., & Long, M. (2021). Autoformer: Decomposition Transformers with Auto-Correlation for Long-Term Series Forecasting. *NeurIPS*.
 
 ---
 
-## Citation
+## XI. Citation
 
 ```bibtex
 @article{dynonet2025,
-  title   = {DynoNet: Dynamic Controller-Worker Networks for 
-             Efficient Time Series Forecasting},
+  title   = {DynoNet: Hypernetwork-Based Adaptive Time Series Forecasting 
+             via Dynamic Weight Modulation},
   author  = {Vu, Khanh},
   journal = {arXiv preprint},
   year    = {2025},
@@ -288,9 +444,7 @@ DynoNet/
 
 ---
 
-## Contact
-
-Questions? Ideas? Found a bug?
+## XII. Contact
 
 📧 kvu1342009@gmail.com  
 🐙 [@kvu1342009-pixel](https://github.com/kvu1342009-pixel)
@@ -299,8 +453,6 @@ Questions? Ideas? Found a bug?
 
 <div align="center">
 
-**If you made it this far, maybe drop a ⭐?**
-
-*Built with lots of coffee and "why isn't this working" moments.*
+*This work is in progress. Constructive feedback is welcome.*
 
 </div>

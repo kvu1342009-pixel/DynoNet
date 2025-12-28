@@ -22,6 +22,10 @@ Time series forecasting faces fundamental challenges including **non-stationarit
 
 ### A. Problem Statement
 
+<p align="center">
+  <img src="png/problem_challenges.png" width="90%" alt="Time Series Forecasting Challenges">
+</p>
+
 Time series forecasting is fundamentally challenged by:
 
 1. **Non-stationarity**: Statistical properties (mean, variance) change over time
@@ -62,6 +66,10 @@ This differs fundamentally from **Meta-Learning (MAML)** [Finn et al., 2017], wh
 **Our approach does NOT compute meta-gradients**. Instead, the Controller is trained via standard first-order optimization on validation data.
 
 ### B. Feature-wise Linear Modulation (FiLM)
+
+<p align="center">
+  <img src="png/film_mechanism.png" width="80%" alt="FiLM Mechanism">
+</p>
 
 FiLM [Perez et al., 2018] conditions neural network activations via affine transformations:
 
@@ -172,6 +180,10 @@ We employ a bi-level optimization strategy, but **this is NOT MAML**:
 **Purpose**: Training Controller on validation data encourages it to generate modulation signals that improve generalization, not just training fit.
 
 ### F. Theoretical Justification: Why This Combination?
+
+<p align="center">
+  <img src="png/technique_overview.png" width="70%" alt="DynoNet Technique Stack">
+</p>
 
 | Technique | Addresses | Mechanism |
 |-----------|-----------|-----------|

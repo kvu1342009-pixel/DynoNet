@@ -154,14 +154,20 @@ where modulation = {γ, β, dropout, gate_masks, ...}
 
 We employ a bi-level optimization strategy, but **this is NOT MAML**:
 
-```
-Level 1 (Worker Update): θ_worker ← θ_worker - α · ∇_{θ_worker} L_train(x_train)
-Level 2 (Controller Update): θ_ctrl ← θ_ctrl - β · ∇_{θ_ctrl} L_val(x_val)
-```
+<p align="center">
+  <img src="png/bilevel_optimization.png" width="90%" alt="Bi-Level Optimization: DynoNet vs MAML">
+</p>
+
+**Update Rules**:
+- **Level 1 (Worker)**: $\theta_w \leftarrow \theta_w - \alpha \cdot \nabla_{\theta_w} \mathcal{L}_{train}$
+- **Level 2 (Controller)**: $\theta_c \leftarrow \theta_c - \beta \cdot \nabla_{\theta_c} \mathcal{L}_{val}$
 
 **Critical Distinction**:
-- **MAML**: Outer loop optimizes `∇L_val(θ - α·∇L_train)`, requiring **second-order derivatives**
-- **Our approach**: Controller and Worker are optimized **independently** on different data splits; no meta-gradients
+| | MAML | DynoNet |
+|---|------|---------|
+| Outer loop | $\nabla \mathcal{L}_{val}(\theta - \alpha \nabla \mathcal{L}_{train})$ | $\nabla \mathcal{L}_{val}(\theta_c)$ |
+| Derivatives | Second-order (Hessian) | First-order only |
+| Complexity | O(n²) | O(n) |
 
 **Purpose**: Training Controller on validation data encourages it to generate modulation signals that improve generalization, not just training fit.
 
